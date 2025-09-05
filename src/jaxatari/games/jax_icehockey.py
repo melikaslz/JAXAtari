@@ -3,6 +3,7 @@ from functools import partial
 from typing import NamedTuple, Tuple
 import jax.lax
 import jax.numpy as jnp
+import jax.random as jrandom
 import chex
 
 import jaxatari.spaces as spaces
@@ -17,7 +18,7 @@ class IceHockeyConstants(NamedTuple):
     
     #Game mechanics
     GAME_DURATION: int = 180  # 3 minutes in seconds (3 * 60)
-    #SCORE_LIMIT: int = 10     # Game ends at 10 points #IGNORE
+    SCORE_LIMIT: int = 10     # Game ends at 10 points #IGNORE now add it later
     
     # Rink layout
     RINK_LEFT: int = 40
@@ -66,23 +67,11 @@ class IceHockeyConstants(NamedTuple):
 
 
 
-    # Team 1 (Top side - blue/red)
-    TEAM1_BODY_COLOR: Tuple[int, int, int] = (0, 0, 255)      # Blue
-    TEAM1_HEAD_COLOR: Tuple[int, int, int] = (255, 200, 150)  # Skin tone
-    TEAM1_LEGS_COLOR: Tuple[int, int, int] = (255, 0, 0)      # Red
-    TEAM1_STICK_COLOR: Tuple[int, int, int] = (255, 0, 0)     # Red
     
-    # Team 2 (Bottom side - green/yellow)  
-    TEAM2_BODY_COLOR: Tuple[int, int, int] = (0, 200, 0)      # Green
-    TEAM2_HEAD_COLOR: Tuple[int, int, int] = (255, 255, 180)  # Light skin
-    TEAM2_LEGS_COLOR: Tuple[int, int, int] = (255, 255, 0)    # Yellow
-    TEAM2_STICK_COLOR: Tuple[int, int, int] = (255, 255, 0)   # Yellow
-    
+
     # Puck and UI
-    PUCK_COLOR: Tuple[int, int, int] = (0, 0, 0)              # Black
     SCORE_COLOR: Tuple[int, int, int] = (255, 255, 255)       # White
     TIMER_COLOR: Tuple[int, int, int] = (0, 0, 255)           # Blue
-    LOGO_COLOR: Tuple[int, int, int] = (255, 255, 255)        # White
     
     # UI positions
     SCORE_LEFT_X: int = 30    # Left score position
@@ -90,9 +79,7 @@ class IceHockeyConstants(NamedTuple):
     SCORE_Y: int = 10         # Score Y position
     TIMER_X: int = 70         # Timer X position (center)
     TIMER_Y: int = 10         # Timer Y position
-    LOGO_X: int = 50          # Logo X position
-    LOGO_Y: int = 200         # Logo Y position (bottom)
-    
+
     #Physics
     COLLISION_DISTANCE: int = 18   # Distance for collision detection (increased for easier hitting and stealing)
     STICK_LENGTH: int = 8          # Length of player stick
@@ -650,8 +637,8 @@ class JaxIcehockey(JaxEnvironment[IceHockeyState, IceHockeyObservation, IceHocke
         """
         # Movement directions: 0=noop, 2=up, 3=left, 4=right, 5=down, 6=up-right, 7=down-left, 8=down-right
         movement = jnp.where(action == 0, 0,  # NOOP
-                   jnp.where(action == 1, 1,  
-                   jnp.where(action == 2, 1,  # DOWN
+                   jnp.where(action == 1, 0,  #FIRE
+                   jnp.where(action == 2, 1,  # UP
                    jnp.where(action == 3, 4,  # LEFT
                    jnp.where(action == 4, 3,  # RIGHT
                    jnp.where(action == 5, 2,  # Down
@@ -660,9 +647,9 @@ class JaxIcehockey(JaxEnvironment[IceHockeyState, IceHockeyObservation, IceHocke
                    jnp.where(action == 8, 8,  # DOWNRIGHT
                    jnp.where(action == 9, 0,  # FIRE (no movement)
                    jnp.where(action == 10, 1, # UPFIRE
-                   jnp.where(action == 11, 2, # DOWNFIRE
+                   jnp.where(action == 11, 4, # RIGHTFIRE
                    jnp.where(action == 12, 3, # LEFTFIRE
-                   jnp.where(action == 13, 4, # RIGHTFIRE
+                   jnp.where(action == 13, 2, # DOWNFIRE
                    jnp.where(action == 14, 5, # UPLEFTFIRE
                    jnp.where(action == 15, 6, # UPRIGHTFIRE
                    jnp.where(action == 16, 7, # DOWNLEFTFIRE
@@ -890,12 +877,27 @@ class JaxIcehockey(JaxEnvironment[IceHockeyState, IceHockeyObservation, IceHocke
         # Determine strategy based on puck possession
         enemy_has_advantage = active_enemy_distance < active_player_distance
         
-        # Calculate target position
+        # Calculate target position with lateral movement to avoid opponent
+        # Get opponent position (closest player from Team 1)
+        opponent_x = state.players_x[active_player_idx]
+        opponent_y = state.players_y[active_player_idx]
+        
+        # Calculate lateral offset to move around opponent
+        lateral_offset = 20  # Distance to move around opponent
+        enemy_x = state.players_x[active_enemy_idx]
+        
+        # Determine which side to go around opponent
+        go_left = enemy_x < opponent_x  # If enemy is left of opponent, go further left
+        
         target_x = jnp.where(enemy_has_advantage,
-                            # If enemy is closer, move towards player's goal (top goal) with puck
-                            (self.consts.GOAL_LEFT + self.consts.GOAL_RIGHT) // 2,
-                            # If player is closer, intercept the puck
-                            state.puck_x)
+                            # If enemy is closer, move towards player's goal with lateral movement
+                            jnp.where(go_left,
+                                    (self.consts.GOAL_LEFT + self.consts.GOAL_RIGHT) // 2 - lateral_offset,
+                                    (self.consts.GOAL_LEFT + self.consts.GOAL_RIGHT) // 2 + lateral_offset),
+                            # If player is closer, intercept the puck with lateral movement
+                            jnp.where(go_left,
+                                    state.puck_x - lateral_offset,
+                                    state.puck_x + lateral_offset))
         
         target_y = jnp.where(enemy_has_advantage,
                             # If enemy is closer, move towards player's goal (top goal)
@@ -1001,30 +1003,91 @@ class JaxIcehockey(JaxEnvironment[IceHockeyState, IceHockeyObservation, IceHocke
         closest_player_idx = jnp.argmin(distances)
         closest_distance = distances[closest_player_idx]
         
-        # Only the closest player can control the puck if they're close enough
-        can_control_puck = closest_distance <= self.consts.COLLISION_DISTANCE + 8  # 26 pixels max range
+        # Check if any Team 1 player (player) is using stick and close enough to steal puck
+        team1_distances = distances[:2]  # Players 0, 1
+        team1_closest_distance = jnp.min(team1_distances)
+        team1_using_stick = jnp.any(use_stick)  # Check if any player is using stick
         
-        # Check if closest player is from Team 1 (players 0,1) or Team 2 (players 2,3)
-        is_team1 = closest_player_idx < 2
+        # Player gets priority if they're using stick and close enough, even if not closest
+        player_can_steal = jnp.logical_and(
+            team1_using_stick,
+            team1_closest_distance <= self.consts.COLLISION_DISTANCE + 8
+        )
         
-        # Get the closest player's velocity for puck carrying
-        closest_player_vel_x = state.players_vel_x[closest_player_idx]
-        closest_player_vel_y = state.players_vel_y[closest_player_idx]
+        # Check if enemy can steal from player (50% chance when player uses stick)
+        # Only if player is currently controlling the puck and using stick
+        enemy_steal_chance = 0.3
+        # Use step counter for pseudo-randomness (50% chance)
+        pseudo_random = (state.step_counter % 2) / 2.0  # Cycles through 0.0, 0.5
+        enemy_can_steal = jnp.logical_and(
+            team1_using_stick,  # Player is using stick
+            jnp.logical_and(
+                closest_distance <= self.consts.COLLISION_DISTANCE + 8,  # Enemy is close enough
+                pseudo_random < enemy_steal_chance  # 50% chance (when pseudo_random is 0.0)
+            )
+        )
+        
+        # Determine who controls the puck
+        # Priority: 1) Enemy stealing from player (when player uses stick), 2) Player stealing from enemy, 3) Closest player
+        controlling_player_idx = jnp.where(
+            enemy_can_steal,
+            closest_player_idx,  # Enemy steals from player
+            jnp.where(
+                player_can_steal,
+                jnp.argmin(team1_distances),  # Closest Team 1 player
+                closest_player_idx  # Normal closest player logic
+            )
+        )
+        
+        # Only the controlling player can control the puck if they're close enough
+        can_control_puck = jnp.where(
+            enemy_can_steal,
+            closest_distance <= self.consts.COLLISION_DISTANCE + 8,
+            jnp.where(
+                player_can_steal,
+                team1_closest_distance <= self.consts.COLLISION_DISTANCE + 8,
+                closest_distance <= self.consts.COLLISION_DISTANCE + 8
+            )
+        )
+        
+        # Check if controlling player is from Team 1 (players 0,1) or Team 2 (players 2,3)
+        is_team1 = controlling_player_idx < 2
+        
+        # Get the controlling player's velocity for puck carrying
+        controlling_player_vel_x = state.players_vel_x[controlling_player_idx]
+        controlling_player_vel_y = state.players_vel_y[controlling_player_idx]
         
         # Calculate puck velocity based on player movement (carrying) vs hitting
         # If player is moving, carry the puck with them; if not moving much, hit toward goal
-        player_moving = jnp.abs(closest_player_vel_x) + jnp.abs(closest_player_vel_y) > 0.5
+        player_moving = jnp.abs(controlling_player_vel_x) + jnp.abs(controlling_player_vel_y) > 0.5
         
         # Puck carrying: move puck with player's velocity
         carry_vel_x = jnp.where(can_control_puck, 
-                               (closest_player_vel_x * 0.8).astype(jnp.int32),  # 80% of player speed
+                               (controlling_player_vel_x * 0.8).astype(jnp.int32),  # 80% of player speed
                                jnp.array(0, dtype=jnp.int32))
         carry_vel_y = jnp.where(can_control_puck,
-                               (closest_player_vel_y * 0.8).astype(jnp.int32),  # 80% of player speed
+                               (controlling_player_vel_y * 0.8).astype(jnp.int32),  # 80% of player speed
                                jnp.array(0, dtype=jnp.int32))
         
-        # Puck hitting: hit toward goal (when not moving much or using stick)
-        hit_dx = jnp.array(0, dtype=jnp.int32)  # No horizontal preference
+        # Puck hitting: hit toward goal with horizontal component based on player movement and position
+        # Get player position
+        player_x = state.players_x[controlling_player_idx]
+        player_y = state.players_y[controlling_player_idx]
+        
+        # Calculate horizontal direction based on player's velocity and position
+        # If player is moving horizontally, use that direction
+        # Otherwise, try to aim around the center of the goal
+        goal_center_x = (self.consts.GOAL_LEFT + self.consts.GOAL_RIGHT) // 2
+        dx_to_goal_center = goal_center_x - player_x
+        
+        hit_dx = jnp.where(
+            jnp.abs(controlling_player_vel_x) > 0.5,  # If player is moving horizontally
+            jnp.where(controlling_player_vel_x > 0, 1, -1),  # Right if positive, left if negative
+            jnp.where(jnp.abs(dx_to_goal_center) > 10,  # If far from goal center
+                     jnp.where(dx_to_goal_center > 0, 1, -1),  # Aim toward goal center
+                     0)  # No horizontal movement if close to center
+        )
+        # Vertical direction: always toward goal
         hit_dy = jnp.where(is_team1, 1, -1)  # Team 1 (top) hits down toward enemy goal, Team 2 (bottom) hits up toward player goal
         
         # Calculate hit velocity
@@ -1039,20 +1102,21 @@ class JaxIcehockey(JaxEnvironment[IceHockeyState, IceHockeyObservation, IceHocke
                             jnp.array(0, dtype=jnp.int32))
         
         # Choose between carrying and hitting based on player movement and stick usage
+        # If player is using stick, always hit the puck toward goal (ignore movement)
         # If player is moving and not using stick, carry the puck
-        # If player is not moving much or using stick, hit the puck
+        # Otherwise, hit the puck
         use_carrying = jnp.logical_and(player_moving, jnp.logical_not(use_stick))
         
         final_vel_x = jnp.where(use_carrying, carry_vel_x, hit_vel_x)
         final_vel_y = jnp.where(use_carrying, carry_vel_y, hit_vel_y)
         
-        # Apply velocity to puck (only from closest player)
+        # Apply velocity to puck (only from controlling player)
         new_puck_vel_x = jnp.where(can_control_puck, final_vel_x, new_puck_vel_x)
         new_puck_vel_y = jnp.where(can_control_puck, final_vel_y, new_puck_vel_y)
         
-        # Update puck possession and last touch (only for closest player)
-        players_has_puck = players_has_puck.at[closest_player_idx].set(jnp.where(can_control_puck, 1, 0))
-        new_last_touch = jnp.where(can_control_puck, closest_player_idx, new_last_touch)
+        # Update puck possession and last touch (only for controlling player)
+        players_has_puck = players_has_puck.at[controlling_player_idx].set(jnp.where(can_control_puck, 1, 0))
+        new_last_touch = jnp.where(can_control_puck, controlling_player_idx, new_last_touch)
         
         # Limit puck speed and ensure minimum speed (like Pong)
         speed = jnp.sqrt(new_puck_vel_x.astype(jnp.float32)**2 + new_puck_vel_y.astype(jnp.float32)**2)
