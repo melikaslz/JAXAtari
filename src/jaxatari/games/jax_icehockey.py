@@ -54,35 +54,34 @@ class IceHockeyConstants(NamedTuple):
 
     #Starting positions - Face-off formation
     # Player 1 and Enemy 1: Stay in goals (defensive)
-    # Player 2 and Enemy 2: Face-off in center near puck
-    PLAYER1_START_X: int = 82   # Team 1, player 1 (goalie - center of goal)
-    PLAYER1_START_Y: int = 30   # Top goal (defensive position) - PLAYERS NOW ON TOP
+    # Player 2 and Enemy 2: In center near puck
+    PLAYER1_START_X: int = 82   # Team 1, player 1 
+    PLAYER1_START_Y: int = 30   
     PLAYER2_START_X: int = 80   # Team 1, player 2 (center field)
-    PLAYER2_START_Y: int = 70   # Near puck for face-off
-    PLAYER3_START_X: int = 82   # Team 2, player 1 (goalie - center of goal)
-    PLAYER3_START_Y: int = 170  # Bottom goal (defensive position) - ENEMIES NOW ON BOTTOM
+    PLAYER2_START_Y: int = 70   
+    PLAYER3_START_X: int = 82   # Team 2, player 1 
+    PLAYER3_START_Y: int = 170
     PLAYER4_START_X: int = 80   # Team 2, player 2 (center field)
-    PLAYER4_START_Y: int = 110  # Near puck for face-off
+    PLAYER4_START_Y: int = 110  
     
-
-
-
-    
-
     # Puck and UI
     SCORE_COLOR: Tuple[int, int, int] = (255, 255, 255)       # White
     TIMER_COLOR: Tuple[int, int, int] = (0, 0, 255)           # Blue
     
     # UI positions
-    SCORE_LEFT_X: int = 30    # Left score position
-    SCORE_RIGHT_X: int = 120  # Right score position
-    SCORE_Y: int = 10         # Score Y position
-    TIMER_X: int = 70         # Timer X position (center)
-    TIMER_Y: int = 10         # Timer Y position
+    SCORE_LEFT_X: int = 30    
+    SCORE_RIGHT_X: int = 120  
+    SCORE_Y: int = 10         
+    TIMER_X: int = 70         
+    TIMER_Y: int = 10
+    
+    # Logo position
+    LOGO_X: int = 73          # X position for logo
+    LOGO_Y: int = 188         # Y position for logo         
 
     #Physics
-    COLLISION_DISTANCE: int = 18   # Distance for collision detection (increased for easier hitting and stealing)
-    STICK_LENGTH: int = 8          # Length of player stick
+    COLLISION_DISTANCE: int = 18   
+    STICK_LENGTH: int = 8          
     STICK_WIDTH: int = 2           # Width of player stick
     BOUNCE_DAMPING: float = 0.8    # Energy loss on bounce
 
@@ -1171,19 +1170,8 @@ class JaxIcehockey(JaxEnvironment[IceHockeyState, IceHockeyObservation, IceHocke
         return new_left_score, new_right_score, goal_scored
 
 
-# Placeholder for the renderer class
 class IceHockeyRenderer(JAXGameRenderer):
     #add stick later
-    """
-    Renderer for the Ice Hockey game.
-    
-    This class handles all visual rendering including:
-    - Ice rink with boundaries and goals
-    - 4 players with team colors
-    - Puck with physics-based movement
-    - Score display and timer
-    - Game UI elements
-    """
     
     def __init__(self, consts: IceHockeyConstants = None):
         """
@@ -1196,43 +1184,42 @@ class IceHockeyRenderer(JAXGameRenderer):
         self.consts = consts or IceHockeyConstants()
         
         # Load Pong sprites temporarily for testing
-        self._load_pong_sprites()
+        self._load_sprites()
         print("IceHockeyRenderer initialized with Pong sprites (temporary)")
 
-    def _load_pong_sprites(self):
-        """Load Pong sprites as temporary graphics for ice hockey."""
+    def _load_sprites(self):
         MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
         
-        # Load Pong sprites
         try:
             player = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/icehockey/player_normal_r.npy"))
             enemy = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/icehockey/enemy_normal_l.npy"))
             ball = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/icehockey/puck.npy"))
             bg = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/icehockey/background.npy"))
+            logo = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/icehockey/logo.npy"))
+            colon = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/icehockey/time.npy"))
             
-            # Load score sprites
             player_score_sprites = jr.load_and_pad_digits(
-                os.path.join(MODULE_DIR, "sprites/pong/player_score_{}.npy"),
+                os.path.join(MODULE_DIR, "sprites/icehockey/player_score_{}.npy"),
                 num_chars=10,
             )
             enemy_score_sprites = jr.load_and_pad_digits(
-                os.path.join(MODULE_DIR, "sprites/pong/enemy_score_{}.npy"),
+                os.path.join(MODULE_DIR, "sprites/icehockey/enemy_score_{}.npy"),
                 num_chars=10,
             )
             
-            # Store sprites
             self.SPRITE_BG = jnp.expand_dims(bg, axis=0)
             self.SPRITE_PLAYER = jnp.expand_dims(player, axis=0)  # Team 1 players
             self.SPRITE_ENEMY = jnp.expand_dims(enemy, axis=0)    # Team 2 players
             self.SPRITE_BALL = jnp.expand_dims(ball, axis=0)      # Puck
+            self.SPRITE_LOGO = jnp.expand_dims(logo, axis=0)      # Logo sprite
+            self.SPRITE_COLON = jnp.expand_dims(colon, axis=0)    # Colon sprite for timer
             self.PLAYER_DIGIT_SPRITES = player_score_sprites      # Team 1 scores
             self.ENEMY_DIGIT_SPRITES = enemy_score_sprites        # Team 2 scores
             
             print("Pong sprites loaded successfully for ice hockey")
             
         except Exception as e:
-            print(f"Warning: Could not load Pong sprites: {e}")
-            # Create simple fallback sprites
+            print(f"Warning: Could not load sprites: {e}")
             self._create_fallback_sprites()
 
     
@@ -1255,30 +1242,23 @@ class IceHockeyRenderer(JAXGameRenderer):
         frame_bg = jr.get_sprite_frame(self.SPRITE_BG, 0)
         raster = jr.render_at(raster, 40, 40, frame_bg)
 
-        
-        # Draw players using Pong sprites
-        # Team 1 players (0, 1) - use player sprite
         for i in range(2):
             x = state.players_x[i]
             y = state.players_y[i]
             frame_player = jr.get_sprite_frame(self.SPRITE_PLAYER, 0)
             raster = jr.render_at(raster, x - self.consts.PLAYER_WIDTH//2, y - self.consts.PLAYER_HEIGHT//2, frame_player)
         
-        # Team 2 players (2, 3) - use enemy sprite
         for i in range(2, 4):
             x = state.players_x[i]
             y = state.players_y[i]
             frame_enemy = jr.get_sprite_frame(self.SPRITE_ENEMY, 0)
             raster = jr.render_at(raster, x - self.consts.PLAYER_WIDTH//2, y - self.consts.PLAYER_HEIGHT//2, frame_enemy)
         
-        # Draw puck using ball sprite
         puck_x = state.puck_x
         puck_y = state.puck_y
         frame_ball = jr.get_sprite_frame(self.SPRITE_BALL, 0)
         raster = jr.render_at(raster, puck_x - self.consts.PUCK_SIZE//2, puck_y - self.consts.PUCK_SIZE//2, frame_ball)
         
-        # Draw scores using Pong score sprites
-        # Left score (Team 1)
         left_score_digits = jr.int_to_digits(state.left_score, max_digits=2)
         is_left_single_digit = state.left_score < 10
         left_start_index = jax.lax.select(is_left_single_digit, 1, 0)
@@ -1292,7 +1272,6 @@ class IceHockeyRenderer(JAXGameRenderer):
                                           left_start_index, left_num_to_render,
                                           spacing=8)
         
-        # Right score (Team 2)
         right_score_digits = jr.int_to_digits(state.right_score, max_digits=2)
         is_right_single_digit = state.right_score < 10
         right_start_index = jax.lax.select(is_right_single_digit, 1, 0)
@@ -1306,22 +1285,37 @@ class IceHockeyRenderer(JAXGameRenderer):
                                           right_start_index, right_num_to_render,
                                           spacing=8)
         
-        # Draw timer (simple text)
-        timer_color = jnp.array(self.consts.TIMER_COLOR, dtype=jnp.uint8)
         time_remaining = state.time_remaining
-        timer_digits = jr.int_to_digits(time_remaining, max_digits=3)
-        is_timer_single_digit = time_remaining < 10
-        timer_start_index = jax.lax.select(is_timer_single_digit, 2, 0)
-        timer_num_to_render = jax.lax.select(is_timer_single_digit, 1, 3)
-        timer_render_x = jax.lax.select(is_timer_single_digit,
-                                       self.consts.TIMER_X + 8,
-                                       self.consts.TIMER_X)
+        minutes = time_remaining // 60
+        seconds = time_remaining % 60
         
-        # Use player sprites for timer (white numbers)
-        raster = jr.render_label_selective(raster, timer_render_x, self.consts.TIMER_Y,
-                                          timer_digits, self.PLAYER_DIGIT_SPRITES,
-                                          timer_start_index, timer_num_to_render,
+        minute_digits = jr.int_to_digits(minutes, max_digits=1)
+        second_digits = jr.int_to_digits(seconds, max_digits=2)
+        
+        minute_render_x = self.consts.TIMER_X
+        raster = jr.render_label_selective(raster, minute_render_x, self.consts.TIMER_Y,
+                                          minute_digits, self.PLAYER_DIGIT_SPRITES,
+                                          0, 1, spacing=8)
+        
+        colon_x = minute_render_x + 8
+        frame_colon = jr.get_sprite_frame(self.SPRITE_COLON, 0)
+        raster = jr.render_at(raster, colon_x, self.consts.TIMER_Y, frame_colon)
+        
+        seconds_render_x = colon_x + 8
+        is_seconds_single_digit = seconds < 10
+        seconds_start_index = jax.lax.select(is_seconds_single_digit, 1, 0)
+        seconds_num_to_render = jax.lax.select(is_seconds_single_digit, 1, 2)
+        seconds_final_x = jax.lax.select(is_seconds_single_digit,
+                                        seconds_render_x + 4,
+                                        seconds_render_x)
+        
+        raster = jr.render_label_selective(raster, seconds_final_x, self.consts.TIMER_Y,
+                                          second_digits, self.PLAYER_DIGIT_SPRITES,
+                                          seconds_start_index, seconds_num_to_render,
                                           spacing=8)
+        
+        frame_logo = jr.get_sprite_frame(self.SPRITE_LOGO, 0)
+        raster = jr.render_at(raster, self.consts.LOGO_X, self.consts.LOGO_Y, frame_logo)
         
         return raster
 
