@@ -12,8 +12,17 @@ from jaxatari.rendering import jax_rendering_utils as jr
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 
 class IceHockeyConstants(NamedTuple):
+    #initialization in OCAtari:
+    #Player at (60, 84), (16, 20),
+    # Player at (70, 35), (10, 20),
+    # Enemy at (70, 155), (10, 20),
+    #  Enemy at (84, 105), (15, 21),
+    #  Ball at (79, 114), (2, 2),
+    #  EnemyScore at (110, 14), (6, 7), 
+    # PlayerScore at (46, 14), (6, 7), 
+    # Timer at (65, 5), (30, 7)
     #Screen dimensions
-    WIDTH: int = 150
+    WIDTH: int = 170
     HEIGHT: int = 210
     
     #Game mechanics
@@ -25,8 +34,8 @@ class IceHockeyConstants(NamedTuple):
     RINK_RIGHT: int = 140
     RINK_TOP: int = 30
     RINK_BOTTOM: int = 180
-    RINK_WIDTH: int = 120     
-    RINK_HEIGHT: int = 150    
+    RINK_WIDTH: int = 100     
+    RINK_HEIGHT: int = 120    
     
     # Goal areas
     GOAL_WIDTH: int = 40
@@ -34,7 +43,7 @@ class IceHockeyConstants(NamedTuple):
     GOAL_LEFT: int = 60       # (160 - 40) / 2
     GOAL_RIGHT: int = 100     # GOAL_LEFT + GOAL_WIDTH
     
-    # Player properties #CHANGE LATER From OC Atari
+    # Player properties #CHANGE LATER From OC 
     PLAYER_WIDTH: int = 6
     PLAYER_HEIGHT: int = 12
     PLAYER_SPEED: int = 2
@@ -51,10 +60,6 @@ class IceHockeyConstants(NamedTuple):
     
     #Stick Add Later
 
-
-    #Starting positions - Face-off formation
-    # Player 1 and Enemy 1: Stay in goals (defensive)
-    # Player 2 and Enemy 2: In center near puck
     PLAYER1_START_X: int = 82   # Team 1, player 1 
     PLAYER1_START_Y: int = 30   
     PLAYER2_START_X: int = 80   # Team 1, player 2 (center field)
@@ -64,16 +69,13 @@ class IceHockeyConstants(NamedTuple):
     PLAYER4_START_X: int = 80   # Team 2, player 2 (center field)
     PLAYER4_START_Y: int = 110  
     
-    # Puck and UI
-    SCORE_COLOR: Tuple[int, int, int] = (255, 255, 255)       # White
-    TIMER_COLOR: Tuple[int, int, int] = (0, 0, 255)           # Blue
     
     # UI positions
-    SCORE_LEFT_X: int = 30    
-    SCORE_RIGHT_X: int = 120  
-    SCORE_Y: int = 10         
-    TIMER_X: int = 70         
-    TIMER_Y: int = 10
+    SCORE_LEFT_X: int = 40
+    SCORE_RIGHT_X: int = 110  
+    SCORE_Y: int = 14         
+    TIMER_X: int = 70        
+    TIMER_Y: int = 5
     
     # Logo position
     LOGO_X: int = 73          # X position for logo
@@ -1160,10 +1162,10 @@ class JaxIcehockey(JaxEnvironment[IceHockeyState, IceHockeyObservation, IceHocke
         )
         
         # Update scores (corrected for new positioning)
-        # Team 1 (top/player) scores when puck goes into top goal (left goal)
-        # Team 2 (bottom/enemy) scores when puck goes into bottom goal (right goal)
-        new_left_score = jnp.where(in_left_goal, left_score + 1, left_score)   # Team 1 (player) scores in top goal
-        new_right_score = jnp.where(in_right_goal, right_score + 1, right_score)  # Team 2 (enemy) scores in bottom goal
+        # Team 1 (top/player) scores when puck goes into bottom goal (enemy's goal)
+        # Team 2 (bottom/enemy) scores when puck goes into top goal (player's goal)
+        new_left_score = jnp.where(in_right_goal, left_score + 1, left_score)   # Team 1 (player) scores in bottom goal
+        new_right_score = jnp.where(in_left_goal, right_score + 1, right_score)  # Team 2 (enemy) scores in top goal
         
         goal_scored = jnp.logical_or(in_left_goal, in_right_goal)
         
@@ -1302,17 +1304,9 @@ class IceHockeyRenderer(JAXGameRenderer):
         raster = jr.render_at(raster, colon_x, self.consts.TIMER_Y, frame_colon)
         
         seconds_render_x = colon_x + 8
-        is_seconds_single_digit = seconds < 10
-        seconds_start_index = jax.lax.select(is_seconds_single_digit, 1, 0)
-        seconds_num_to_render = jax.lax.select(is_seconds_single_digit, 1, 2)
-        seconds_final_x = jax.lax.select(is_seconds_single_digit,
-                                        seconds_render_x + 4,
-                                        seconds_render_x)
-        
-        raster = jr.render_label_selective(raster, seconds_final_x, self.consts.TIMER_Y,
+        raster = jr.render_label_selective(raster, seconds_render_x, self.consts.TIMER_Y,
                                           second_digits, self.PLAYER_DIGIT_SPRITES,
-                                          seconds_start_index, seconds_num_to_render,
-                                          spacing=8)
+                                          0, 2, spacing=8)
         
         frame_logo = jr.get_sprite_frame(self.SPRITE_LOGO, 0)
         raster = jr.render_at(raster, self.consts.LOGO_X, self.consts.LOGO_Y, frame_logo)
